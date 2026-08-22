@@ -1,0 +1,6 @@
+[package]
+name = "fixturelint"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Strict-by-default validator for plain-text sports fixture lists"
