@@ -59,6 +59,36 @@ impl fmt::Display for Date {
     }
 }
 
+impl Date {
+    /// Returns the date `days` days after this one. Walks month by month
+    /// rather than converting to a Julian day number, since the spans
+    /// involved (a season's worth of round-robin rounds) are small.
+    pub fn add_days(&self, days: u32) -> Date {
+        let mut year = self.year;
+        let mut month = self.month;
+        let mut day = self.day as u32;
+        let mut remaining = days;
+
+        loop {
+            let days_left_in_month = days_in_month(year, month) as u32 - day;
+            if remaining <= days_left_in_month {
+                day += remaining;
+                break;
+            }
+            remaining -= days_left_in_month + 1;
+            day = 1;
+            if month == 12 {
+                month = 1;
+                year += 1;
+            } else {
+                month += 1;
+            }
+        }
+
+        Date { year, month, day: day as u8 }
+    }
+}
+
 fn is_leap_year(year: u16) -> bool {
     (year % 4 == 0 && year % 100 != 0) || year % 400 == 0
 }
@@ -187,6 +217,69 @@ fn parse_line(line: &str) -> Result<(Date, String, String), String> {
     Ok((date, home.to_string(), away.to_string()))
 }
 
+/// Generates a single round-robin schedule (every team plays every other
+/// team exactly once) using the standard circle method: fix one team, and
+/// rotate the rest one position each round.
+///
+/// Rounds are spaced `days_between_rounds` apart starting on `start`. Team
+/// names are matched case-insensitively for duplicate detection but kept in
+/// their original casing in the output.
+pub fn generate_round_robin(
+    teams: &[String],
+    start: &Date,
+    days_between_rounds: u32,
+) -> Result<Vec<Fixture>, String> {
+    let mut names: Vec<String> = Vec::new();
+    let mut seen: HashSet<String> = HashSet::new();
+    for team in teams {
+        let team = team.trim();
+        if team.is_empty() {
+            continue;
+        }
+        if !seen.insert(team.to_lowercase()) {
+            return Err(format!("duplicate team '{}' in list", team));
+        }
+        names.push(team.to_string());
+    }
+
+    if names.len() < 2 {
+        return Err("need at least 2 distinct teams to generate fixtures".to_string());
+    }
+
+    let bye = names.len() % 2 == 1;
+    if bye {
+        names.push("BYE".to_string());
+    }
+    let n = names.len();
+    let half = n / 2;
+
+    let mut arrangement: Vec<usize> = (0..n).collect();
+    let mut fixtures = Vec::new();
+
+    for round in 0..(n - 1) {
+        let date = start.add_days(round as u32 * days_between_rounds);
+        for i in 0..half {
+            let a = arrangement[i];
+            let b = arrangement[n - 1 - i];
+            if names[a] == "BYE" || names[b] == "BYE" {
+                continue;
+            }
+            // Alternate which side of the pairing is home each round so one
+            // team doesn't end up hosting every fixture it's involved in.
+            let (home, away) = if round % 2 == 0 { (a, b) } else { (b, a) };
+            fixtures.push(Fixture {
+                date: date.clone(),
+                home: names[home].clone(),
+                away: names[away].clone(),
+            });
+        }
+        let last = arrangement.pop().unwrap();
+        arrangement.insert(1, last);
+    }
+
+    Ok(fixtures)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -234,5 +327,75 @@ mod tests {
         let outcome = parse_str(input, &options).unwrap();
         assert_eq!(outcome.fixtures.len(), 2);
         assert_eq!(outcome.warnings.len(), 1);
+    }
+
+    #[test]
+    fn add_days_rolls_over_month_and_year_boundaries() {
+        let d = Date { year: 2026, month: 1, day: 30 };
+        assert_eq!(d.add_days(3), Date { year: 2026, month: 2, day: 2 });
+
+        let new_years_eve = Date { year: 2026, month: 12, day: 31 };
+        assert_eq!(new_years_eve.add_days(1), Date { year: 2027, month: 1, day: 1 });
+
+        let leap_day_eve = Date { year: 2028, month: 2, day: 28 };
+        assert_eq!(leap_day_eve.add_days(1), Date { year: 2028, month: 2, day: 29 });
+    }
+
+    #[test]
+    fn round_robin_pairs_every_team_exactly_once() {
+        let teams = vec!["Arsenal", "Chelsea", "Liverpool", "Everton"]
+            .into_iter()
+            .map(String::from)
+            .collect::<Vec<_>>();
+        let start = Date { year: 2026, month: 8, day: 23 };
+        let fixtures = generate_round_robin(&teams, &start, 7).unwrap();
+
+        // 4 teams -> 3 rounds of 2 matches each.
+        assert_eq!(fixtures.len(), 6);
+
+        let mut seen_pairs: HashSet<(String, String)> = HashSet::new();
+        for fixture in &fixtures {
+            let mut pair = [fixture.home.clone(), fixture.away.clone()];
+            pair.sort();
+            assert!(
+                seen_pairs.insert((pair[0].clone(), pair[1].clone())),
+                "pair {:?} appeared more than once",
+                pair
+            );
+        }
+        assert_eq!(seen_pairs.len(), 6);
+    }
+
+    #[test]
+    fn round_robin_gives_every_team_a_bye_with_odd_count() {
+        let teams = vec!["Arsenal", "Chelsea", "Liverpool"]
+            .into_iter()
+            .map(String::from)
+            .collect::<Vec<_>>();
+        let start = Date { year: 2026, month: 8, day: 23 };
+        let fixtures = generate_round_robin(&teams, &start, 7).unwrap();
+
+        // 3 teams -> 3 rounds, one match each (one team byes per round).
+        assert_eq!(fixtures.len(), 3);
+        for fixture in &fixtures {
+            assert!(fixture.home != "BYE" && fixture.away != "BYE");
+        }
+    }
+
+    #[test]
+    fn round_robin_rejects_duplicate_teams() {
+        let teams = vec!["Arsenal", "arsenal"]
+            .into_iter()
+            .map(String::from)
+            .collect::<Vec<_>>();
+        let start = Date { year: 2026, month: 8, day: 23 };
+        assert!(generate_round_robin(&teams, &start, 7).is_err());
+    }
+
+    #[test]
+    fn round_robin_rejects_fewer_than_two_teams() {
+        let teams = vec!["Arsenal".to_string()];
+        let start = Date { year: 2026, month: 8, day: 23 };
+        assert!(generate_round_robin(&teams, &start, 7).is_err());
     }
 }

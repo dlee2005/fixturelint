@@ -54,6 +54,33 @@ warning: line 2: duplicate fixture: Arsenal vs Chelsea on 2026-08-23 (skipped)
 1 fixture(s) parsed, 1 warning(s)
 ```
 
+## Generating a round-robin schedule
+
+Given a plain list of team names (one per line, `#` comments allowed), the
+`generate` subcommand produces a single round-robin schedule — every team
+plays every other team exactly once — using the standard circle method. Byes
+are handled automatically for an odd number of teams.
+
+```
+$ cat teams.txt
+Arsenal
+Chelsea
+Liverpool
+Everton
+$ fixturelint generate teams.txt --start-date 2026-08-23
+2026-08-23,Arsenal,Everton
+2026-08-23,Chelsea,Liverpool
+2026-08-30,Liverpool,Arsenal
+2026-08-30,Chelsea,Everton
+2026-09-06,Arsenal,Chelsea
+2026-09-06,Liverpool,Everton
+```
+
+Rounds are spaced a week apart by default; pass `--days-between-rounds N` to
+change that. The output is in the same `date,home,away` format the parser
+reads, so it can be piped straight into a file and fed back through
+`fixturelint` for validation.
+
 ## Library usage
 
 ```rust
@@ -75,8 +102,8 @@ for fixture in outcome.fixtures {
 
 ## Status
 
-Early skeleton. No round-robin generation, no team-registry cross-checking,
-no output formats beyond the default text listing yet.
+Early skeleton. Round-robin generation is in; no team-registry
+cross-checking and no output formats beyond the default text listing yet.
 
 ## License
 
