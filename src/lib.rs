@@ -133,9 +133,38 @@ impl fmt::Display for FixtureError {
     }
 }
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct ParseOptions {
     pub lenient: bool,
+    /// When set, every home and away team must appear in the registry.
+    pub registry: Option<TeamRegistry>,
+}
+
+/// A known set of team names to validate fixtures against, so a typo'd or
+/// renamed team gets caught instead of silently entering the schedule.
+#[derive(Debug, Clone, Default)]
+pub struct TeamRegistry {
+    teams: HashSet<String>,
+}
+
+impl TeamRegistry {
+    /// Parses a plain list of team names, one per line. Blank lines and
+    /// lines starting with `#` are ignored, matching the teams-file format
+    /// `generate` already reads.
+    pub fn parse_str(input: &str) -> TeamRegistry {
+        let teams = input
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty() && !line.starts_with('#'))
+            .map(|line| line.to_lowercase())
+            .collect();
+        TeamRegistry { teams }
+    }
+
+    /// Case-insensitive membership check.
+    pub fn contains(&self, team: &str) -> bool {
+        self.teams.contains(&team.to_lowercase())
+    }
 }
 
 #[derive(Debug, Default)]
@@ -158,6 +187,14 @@ pub fn parse_str(input: &str, options: &ParseOptions) -> Result<ParseOutcome, Fi
         let parsed = parse_line(line).and_then(|(date, home, away)| {
             if home.eq_ignore_ascii_case(&away) {
                 return Err(format!("team '{}' cannot play itself", home));
+            }
+            if let Some(registry) = &options.registry {
+                if !registry.contains(&home) {
+                    return Err(format!("team '{}' is not in the registry", home));
+                }
+                if !registry.contains(&away) {
+                    return Err(format!("team '{}' is not in the registry", away));
+                }
             }
             Ok((date, home, away))
         });
@@ -326,6 +363,48 @@ mod tests {
         let options = ParseOptions { lenient: true };
         let outcome = parse_str(input, &options).unwrap();
         assert_eq!(outcome.fixtures.len(), 2);
+        assert_eq!(outcome.warnings.len(), 1);
+    }
+
+    #[test]
+    fn registry_accepts_known_teams() {
+        let registry = TeamRegistry::parse_str("Arsenal\nChelsea\n");
+        let options = ParseOptions {
+            lenient: false,
+            registry: Some(registry),
+        };
+        let outcome = parse_str("2026-08-23,Arsenal,Chelsea\n", &options).unwrap();
+        assert_eq!(outcome.fixtures.len(), 1);
+    }
+
+    #[test]
+    fn registry_check_is_case_insensitive() {
+        let registry = TeamRegistry::parse_str("arsenal\nCHELSEA\n");
+        assert!(registry.contains("Arsenal"));
+        assert!(registry.contains("chelsea"));
+        assert!(!registry.contains("Everton"));
+    }
+
+    #[test]
+    fn strict_mode_rejects_team_not_in_registry() {
+        let registry = TeamRegistry::parse_str("Arsenal\nChelsea\n");
+        let options = ParseOptions {
+            lenient: false,
+            registry: Some(registry),
+        };
+        let err = parse_str("2026-08-23,Arsenal,Everton\n", &options).unwrap_err();
+        assert!(err.message.contains("not in the registry"));
+    }
+
+    #[test]
+    fn lenient_mode_warns_on_team_not_in_registry() {
+        let registry = TeamRegistry::parse_str("Arsenal\nChelsea\n");
+        let options = ParseOptions {
+            lenient: true,
+            registry: Some(registry),
+        };
+        let outcome = parse_str("2026-08-23,Arsenal,Everton\n", &options).unwrap();
+        assert!(outcome.fixtures.is_empty());
         assert_eq!(outcome.warnings.len(), 1);
     }
 

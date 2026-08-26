@@ -2,7 +2,7 @@ use std::env;
 use std::fs;
 use std::process::ExitCode;
 
-use fixturelint::{generate_round_robin, parse_str, Date, ParseOptions};
+use fixturelint::{generate_round_robin, parse_str, Date, ParseOptions, TeamRegistry};
 
 fn main() -> ExitCode {
     let args: Vec<String> = env::args().skip(1).collect();
@@ -12,11 +12,23 @@ fn main() -> ExitCode {
     }
 
     let mut lenient = false;
+    let mut registry_path: Option<String> = None;
     let mut path: Option<String> = None;
 
-    for arg in args {
-        match arg.as_str() {
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
             "--lenient" => lenient = true,
+            "--registry" => {
+                i += 1;
+                registry_path = match args.get(i) {
+                    Some(p) => Some(p.clone()),
+                    None => {
+                        eprintln!("--registry requires a file path");
+                        return ExitCode::FAILURE;
+                    }
+                };
+            }
             "-h" | "--help" => {
                 print_usage();
                 return ExitCode::SUCCESS;
@@ -28,6 +40,7 @@ fn main() -> ExitCode {
                 return ExitCode::FAILURE;
             }
         }
+        i += 1;
     }
 
     let path = match path {
@@ -46,7 +59,18 @@ fn main() -> ExitCode {
         }
     };
 
-    let options = ParseOptions { lenient };
+    let registry = match registry_path {
+        Some(p) => match fs::read_to_string(&p) {
+            Ok(s) => Some(TeamRegistry::parse_str(&s)),
+            Err(e) => {
+                eprintln!("failed to read '{}': {}", p, e);
+                return ExitCode::FAILURE;
+            }
+        },
+        None => None,
+    };
+
+    let options = ParseOptions { lenient, registry };
     match parse_str(&input, &options) {
         Ok(outcome) => {
             for fixture in &outcome.fixtures {
@@ -159,8 +183,9 @@ fn run_generate(args: &[String]) -> ExitCode {
 }
 
 fn print_usage() {
-    eprintln!("usage: fixturelint <file> [--lenient]");
+    eprintln!("usage: fixturelint <file> [--lenient] [--registry <teams-file>]");
     eprintln!("       fixturelint generate <teams-file> --start-date YYYY-MM-DD [--days-between-rounds N]");
+    eprintln!("--registry: reject any fixture whose home or away team isn't in the given team list");
 }
 
 fn print_generate_usage() {

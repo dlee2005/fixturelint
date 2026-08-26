@@ -54,6 +54,22 @@ warning: line 2: duplicate fixture: Arsenal vs Chelsea on 2026-08-23 (skipped)
 1 fixture(s) parsed, 1 warning(s)
 ```
 
+## Checking teams against a registry
+
+Pass `--registry <teams-file>` to reject any fixture where the home or away
+team isn't in a known list of teams (same one-name-per-line format the
+`generate` subcommand reads). This catches a team name that's misspelled or
+was renamed and never updated in the fixture list.
+
+```
+$ cat teams.txt
+Arsenal
+Chelsea
+$ fixturelint --registry teams.txt fixtures.txt
+error: line 1: team 'Chlesea' is not in the registry
+(pass --lenient to skip bad lines instead of failing)
+```
+
 ## Generating a round-robin schedule
 
 Given a plain list of team names (one per line, `#` comments allowed), the
@@ -99,11 +115,13 @@ for fixture in outcome.fixtures {
   (month 13, Feb 30, etc.)
 - a team scheduled to play itself
 - an exact duplicate fixture (same date, same two teams)
+- a team not present in a supplied `--registry` file (only checked when
+  `--registry` is passed)
 
 ## Status
 
-Early skeleton. Round-robin generation is in; no team-registry
-cross-checking and no output formats beyond the default text listing yet.
+Early skeleton. Round-robin generation and team-registry cross-checking are
+in; no output formats beyond the default text listing yet.
 
 ## License
 
