@@ -121,6 +121,17 @@ impl fmt::Display for Fixture {
     }
 }
 
+impl Fixture {
+    pub fn to_json(&self) -> String {
+        format!(
+            "{{\"date\":\"{}\",\"home\":\"{}\",\"away\":\"{}\"}}",
+            self.date,
+            json_escape(&self.home),
+            json_escape(&self.away)
+        )
+    }
+}
+
 #[derive(Debug)]
 pub struct FixtureError {
     pub line: usize,
@@ -171,6 +182,42 @@ impl TeamRegistry {
 pub struct ParseOutcome {
     pub fixtures: Vec<Fixture>,
     pub warnings: Vec<String>,
+}
+
+impl ParseOutcome {
+    /// Renders the outcome as a single JSON object with `fixtures` and
+    /// `warnings` arrays. Written by hand rather than pulling in a JSON
+    /// crate, since the shape here is fixed and small.
+    pub fn to_json(&self) -> String {
+        let fixtures: Vec<String> = self.fixtures.iter().map(Fixture::to_json).collect();
+        let warnings: Vec<String> = self
+            .warnings
+            .iter()
+            .map(|w| format!("\"{}\"", json_escape(w)))
+            .collect();
+        format!(
+            "{{\"fixtures\":[{}],\"warnings\":[{}]}}",
+            fixtures.join(","),
+            warnings.join(",")
+        )
+    }
+}
+
+/// Escapes a string for embedding in a JSON string literal.
+pub fn json_escape(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out
 }
 
 pub fn parse_str(input: &str, options: &ParseOptions) -> Result<ParseOutcome, FixtureError> {
@@ -469,6 +516,28 @@ mod tests {
             .collect::<Vec<_>>();
         let start = Date { year: 2026, month: 8, day: 23 };
         assert!(generate_round_robin(&teams, &start, 7).is_err());
+    }
+
+    #[test]
+    fn outcome_to_json_renders_fixtures_and_warnings() {
+        let input = "2026-08-23,Arsenal,Chelsea\n2026-02-30,Foo,Bar\n";
+        let options = ParseOptions {
+            lenient: true,
+            registry: None,
+        };
+        let outcome = parse_str(input, &options).unwrap();
+        let json = outcome.to_json();
+        assert_eq!(
+            json,
+            "{\"fixtures\":[{\"date\":\"2026-08-23\",\"home\":\"Arsenal\",\"away\":\"Chelsea\"}],\
+             \"warnings\":[\"line 2: day 30 out of range for 2026-02 in '2026-02-30' (skipped)\"]}"
+        );
+    }
+
+    #[test]
+    fn json_escape_handles_quotes_and_backslashes() {
+        assert_eq!(json_escape("a\"b\\c"), "a\\\"b\\\\c");
+        assert_eq!(json_escape("tab\there"), "tab\\there");
     }
 
     #[test]

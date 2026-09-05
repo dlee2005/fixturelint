@@ -14,6 +14,7 @@ fn main() -> ExitCode {
     let mut lenient = false;
     let mut registry_path: Option<String> = None;
     let mut path: Option<String> = None;
+    let mut format = OutputFormat::Text;
 
     let mut i = 0;
     while i < args.len() {
@@ -25,6 +26,21 @@ fn main() -> ExitCode {
                     Some(p) => Some(p.clone()),
                     None => {
                         eprintln!("--registry requires a file path");
+                        return ExitCode::FAILURE;
+                    }
+                };
+            }
+            "--format" => {
+                i += 1;
+                format = match args.get(i).map(String::as_str) {
+                    Some("text") => OutputFormat::Text,
+                    Some("json") => OutputFormat::Json,
+                    Some(other) => {
+                        eprintln!("unknown format '{}': expected 'text' or 'json'", other);
+                        return ExitCode::FAILURE;
+                    }
+                    None => {
+                        eprintln!("--format requires a value ('text' or 'json')");
                         return ExitCode::FAILURE;
                     }
                 };
@@ -73,25 +89,48 @@ fn main() -> ExitCode {
     let options = ParseOptions { lenient, registry };
     match parse_str(&input, &options) {
         Ok(outcome) => {
-            for fixture in &outcome.fixtures {
-                println!("{}", fixture);
+            match format {
+                OutputFormat::Text => {
+                    for fixture in &outcome.fixtures {
+                        println!("{}", fixture);
+                    }
+                    for warning in &outcome.warnings {
+                        eprintln!("warning: {}", warning);
+                    }
+                    eprintln!(
+                        "{} fixture(s) parsed, {} warning(s)",
+                        outcome.fixtures.len(),
+                        outcome.warnings.len()
+                    );
+                }
+                OutputFormat::Json => {
+                    println!("{}", outcome.to_json());
+                }
             }
-            for warning in &outcome.warnings {
-                eprintln!("warning: {}", warning);
-            }
-            eprintln!(
-                "{} fixture(s) parsed, {} warning(s)",
-                outcome.fixtures.len(),
-                outcome.warnings.len()
-            );
             ExitCode::SUCCESS
         }
         Err(e) => {
-            eprintln!("error: {}", e);
-            eprintln!("(pass --lenient to skip bad lines instead of failing)");
+            match format {
+                OutputFormat::Text => {
+                    eprintln!("error: {}", e);
+                    eprintln!("(pass --lenient to skip bad lines instead of failing)");
+                }
+                OutputFormat::Json => {
+                    println!(
+                        "{{\"error\":\"{}\"}}",
+                        fixturelint::json_escape(&e.to_string())
+                    );
+                }
+            }
             ExitCode::FAILURE
         }
     }
+}
+
+#[derive(Clone, Copy)]
+enum OutputFormat {
+    Text,
+    Json,
 }
 
 fn run_generate(args: &[String]) -> ExitCode {
@@ -183,9 +222,10 @@ fn run_generate(args: &[String]) -> ExitCode {
 }
 
 fn print_usage() {
-    eprintln!("usage: fixturelint <file> [--lenient] [--registry <teams-file>]");
+    eprintln!("usage: fixturelint <file> [--lenient] [--registry <teams-file>] [--format text|json]");
     eprintln!("       fixturelint generate <teams-file> --start-date YYYY-MM-DD [--days-between-rounds N]");
     eprintln!("--registry: reject any fixture whose home or away team isn't in the given team list");
+    eprintln!("--format: 'text' (default) prints one line per fixture, 'json' prints a single JSON object");
 }
 
 fn print_generate_usage() {

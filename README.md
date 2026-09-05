@@ -70,6 +70,24 @@ error: line 1: team 'Chlesea' is not in the registry
 (pass --lenient to skip bad lines instead of failing)
 ```
 
+## JSON output
+
+Pass `--format json` to get a single JSON object instead of the text listing,
+for piping into another tool:
+
+```
+$ fixturelint --format json fixtures.txt
+{"fixtures":[{"date":"2026-08-23","home":"Arsenal","away":"Chelsea"}],"warnings":[]}
+```
+
+A strict-mode failure prints a JSON error object instead of the usual
+`error:` line, and the process still exits non-zero:
+
+```
+$ fixturelint --format json bad.txt
+{"error":"line 2: duplicate fixture: Arsenal vs Chelsea on 2026-08-23"}
+```
+
 ## Generating a round-robin schedule
 
 Given a plain list of team names (one per line, `#` comments allowed), the
@@ -102,10 +120,11 @@ reads, so it can be piped straight into a file and fed back through
 ```rust
 use fixturelint::{parse_str, ParseOptions};
 
-let outcome = parse_str(input, &ParseOptions { lenient: false })?;
+let outcome = parse_str(input, &ParseOptions::default())?;
 for fixture in outcome.fixtures {
     println!("{}", fixture);
 }
+println!("{}", outcome.to_json());
 ```
 
 ## What counts as invalid right now
@@ -120,8 +139,8 @@ for fixture in outcome.fixtures {
 
 ## Status
 
-Early skeleton. Round-robin generation and team-registry cross-checking are
-in; no output formats beyond the default text listing yet.
+Early skeleton. Round-robin generation, team-registry cross-checking, and
+JSON output are in.
 
 ## License
 
