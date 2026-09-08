@@ -5,11 +5,11 @@
 //! are ignored.
 //!
 //! By default parsing is strict: the first bad line (malformed date, a
-//! team playing itself, a duplicate fixture) aborts the whole parse.
-//! Pass `ParseOptions { lenient: true }` to skip bad lines and collect
-//! warnings instead.
+//! team playing itself, a duplicate fixture, or a team double-booked on
+//! the same date) aborts the whole parse. Pass `ParseOptions { lenient:
+//! true }` to skip bad lines and collect warnings instead.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -223,6 +223,10 @@ pub fn json_escape(s: &str) -> String {
 pub fn parse_str(input: &str, options: &ParseOptions) -> Result<ParseOutcome, FixtureError> {
     let mut outcome = ParseOutcome::default();
     let mut seen: HashSet<(Date, String, String)> = HashSet::new();
+    // Tracks the first line a team was booked on a given date, so a second
+    // fixture for that team the same day gets caught even if the opponent
+    // differs (an exact duplicate is already caught by `seen` above).
+    let mut booked: HashMap<(Date, String), usize> = HashMap::new();
 
     for (idx, raw_line) in input.lines().enumerate() {
         let line_no = idx + 1;
@@ -262,6 +266,33 @@ pub fn parse_str(input: &str, options: &ParseOptions) -> Result<ParseOutcome, Fi
                         message: msg,
                     });
                 }
+
+                let home_key = (date.clone(), home.to_lowercase());
+                let away_key = (date.clone(), away.to_lowercase());
+                let conflict = booked
+                    .get(&home_key)
+                    .map(|&prev_line| (&home, prev_line))
+                    .or_else(|| booked.get(&away_key).map(|&prev_line| (&away, prev_line)));
+
+                if let Some((team, prev_line)) = conflict {
+                    let msg = format!(
+                        "team '{}' is already booked on {} (line {})",
+                        team, date, prev_line
+                    );
+                    if options.lenient {
+                        outcome
+                            .warnings
+                            .push(format!("line {}: {} (skipped)", line_no, msg));
+                        continue;
+                    }
+                    return Err(FixtureError {
+                        line: line_no,
+                        message: msg,
+                    });
+                }
+
+                booked.insert(home_key, line_no);
+                booked.insert(away_key, line_no);
                 outcome.fixtures.push(Fixture { date, home, away });
             }
             Err(msg) => {
@@ -441,6 +472,40 @@ mod tests {
         };
         let err = parse_str("2026-08-23,Arsenal,Everton\n", &options).unwrap_err();
         assert!(err.message.contains("not in the registry"));
+    }
+
+    #[test]
+    fn strict_mode_rejects_same_day_double_booking() {
+        let input = "2026-08-23,Arsenal,Chelsea\n2026-08-23,Arsenal,Everton\n";
+        let err = parse_str(input, &ParseOptions::default()).unwrap_err();
+        assert_eq!(err.line, 2);
+        assert!(err.message.contains("already booked"));
+    }
+
+    #[test]
+    fn double_booking_is_caught_regardless_of_home_away_side() {
+        let input = "2026-08-23,Arsenal,Chelsea\n2026-08-23,Everton,Arsenal\n";
+        let err = parse_str(input, &ParseOptions::default()).unwrap_err();
+        assert_eq!(err.line, 2);
+    }
+
+    #[test]
+    fn same_team_on_different_dates_is_fine() {
+        let input = "2026-08-23,Arsenal,Chelsea\n2026-08-30,Arsenal,Everton\n";
+        let outcome = parse_str(input, &ParseOptions::default()).unwrap();
+        assert_eq!(outcome.fixtures.len(), 2);
+    }
+
+    #[test]
+    fn lenient_mode_warns_on_double_booking() {
+        let input = "2026-08-23,Arsenal,Chelsea\n2026-08-23,Arsenal,Everton\n";
+        let options = ParseOptions {
+            lenient: true,
+            registry: None,
+        };
+        let outcome = parse_str(input, &options).unwrap();
+        assert_eq!(outcome.fixtures.len(), 1);
+        assert_eq!(outcome.warnings.len(), 1);
     }
 
     #[test]

@@ -3,7 +3,8 @@
 Small local leagues pass fixture lists around as plain text or CSV, usually
 copy-pasted between a spreadsheet and an email. In practice that means the
 occasional typo'd date (`2026-02-30`), a row duplicated when someone pastes
-twice, or a team accidentally listed as playing itself. Those errors are easy
+twice, a team accidentally listed as playing itself, or a team double-booked
+for two different fixtures on the same date. Those errors are easy
 to miss by eye and annoying to discover after they've already gone into a
 calendar or a pitch-booking system.
 
@@ -134,13 +135,15 @@ println!("{}", outcome.to_json());
   (month 13, Feb 30, etc.)
 - a team scheduled to play itself
 - an exact duplicate fixture (same date, same two teams)
+- a team double-booked with two different fixtures on the same date, even
+  against different opponents
 - a team not present in a supplied `--registry` file (only checked when
   `--registry` is passed)
 
 ## Status
 
-Early skeleton. Round-robin generation, team-registry cross-checking, and
-JSON output are in.
+Early skeleton. Round-robin generation, team-registry cross-checking,
+same-day double-booking detection, and JSON output are in.
 
 ## License
 
