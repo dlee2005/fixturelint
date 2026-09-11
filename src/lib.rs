@@ -185,6 +185,13 @@ pub struct ParseOutcome {
 }
 
 impl ParseOutcome {
+    /// Reorders fixtures by date, earliest first. Fixtures sharing a date
+    /// keep their original relative order (stable sort), since that's
+    /// usually the order they were listed in the source file.
+    pub fn sort_by_date(&mut self) {
+        self.fixtures.sort_by(|a, b| a.date.cmp(&b.date));
+    }
+
     /// Renders the outcome as a single JSON object with `fixtures` and
     /// `warnings` arrays. Written by hand rather than pulling in a JSON
     /// crate, since the shape here is fixed and small.
@@ -603,6 +610,24 @@ mod tests {
     fn json_escape_handles_quotes_and_backslashes() {
         assert_eq!(json_escape("a\"b\\c"), "a\\\"b\\\\c");
         assert_eq!(json_escape("tab\there"), "tab\\there");
+    }
+
+    #[test]
+    fn sort_by_date_orders_fixtures_earliest_first() {
+        let input = "2026-08-30,Liverpool,Everton\n2026-08-23,Arsenal,Chelsea\n2026-08-24,Chelsea,Arsenal\n";
+        let mut outcome = parse_str(input, &ParseOptions::default()).unwrap();
+        outcome.sort_by_date();
+        let dates: Vec<String> = outcome.fixtures.iter().map(|f| f.date.to_string()).collect();
+        assert_eq!(dates, vec!["2026-08-23", "2026-08-24", "2026-08-30"]);
+    }
+
+    #[test]
+    fn sort_by_date_is_stable_for_same_day_fixtures() {
+        let input = "2026-08-23,Arsenal,Chelsea\n2026-08-23,Liverpool,Everton\n";
+        let mut outcome = parse_str(input, &ParseOptions::default()).unwrap();
+        outcome.sort_by_date();
+        assert_eq!(outcome.fixtures[0].home, "Arsenal");
+        assert_eq!(outcome.fixtures[1].home, "Liverpool");
     }
 
     #[test]

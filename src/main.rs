@@ -12,6 +12,7 @@ fn main() -> ExitCode {
     }
 
     let mut lenient = false;
+    let mut sort_by_date = false;
     let mut registry_path: Option<String> = None;
     let mut path: Option<String> = None;
     let mut format = OutputFormat::Text;
@@ -20,6 +21,7 @@ fn main() -> ExitCode {
     while i < args.len() {
         match args[i].as_str() {
             "--lenient" => lenient = true,
+            "--sort-by-date" => sort_by_date = true,
             "--registry" => {
                 i += 1;
                 registry_path = match args.get(i) {
@@ -88,7 +90,10 @@ fn main() -> ExitCode {
 
     let options = ParseOptions { lenient, registry };
     match parse_str(&input, &options) {
-        Ok(outcome) => {
+        Ok(mut outcome) => {
+            if sort_by_date {
+                outcome.sort_by_date();
+            }
             match format {
                 OutputFormat::Text => {
                     for fixture in &outcome.fixtures {
@@ -222,10 +227,11 @@ fn run_generate(args: &[String]) -> ExitCode {
 }
 
 fn print_usage() {
-    eprintln!("usage: fixturelint <file> [--lenient] [--registry <teams-file>] [--format text|json]");
+    eprintln!("usage: fixturelint <file> [--lenient] [--registry <teams-file>] [--format text|json] [--sort-by-date]");
     eprintln!("       fixturelint generate <teams-file> --start-date YYYY-MM-DD [--days-between-rounds N]");
     eprintln!("--registry: reject any fixture whose home or away team isn't in the given team list");
     eprintln!("--format: 'text' (default) prints one line per fixture, 'json' prints a single JSON object");
+    eprintln!("--sort-by-date: order output by date instead of the order fixtures appear in the file");
 }
 
 fn print_generate_usage() {

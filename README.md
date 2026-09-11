@@ -89,6 +89,27 @@ $ fixturelint --format json bad.txt
 {"error":"line 2: duplicate fixture: Arsenal vs Chelsea on 2026-08-23"}
 ```
 
+## Sorting output by date
+
+Fixtures are printed in the order they appear in the input file by default,
+which is fine for a file that's already in date order but not for one
+assembled by pasting several teams' lists together. Pass `--sort-by-date` to
+sort the output by date instead; fixtures on the same date keep their
+original relative order.
+
+```
+$ cat mixed.txt
+2026-08-30,Liverpool,Everton
+2026-08-23,Arsenal,Chelsea
+$ fixturelint --sort-by-date mixed.txt
+2026-08-23  Arsenal vs Chelsea
+2026-08-30  Liverpool vs Everton
+2 fixture(s) parsed, 0 warning(s)
+```
+
+This works with `--format json` too; the `fixtures` array comes out in date
+order.
+
 ## Generating a round-robin schedule
 
 Given a plain list of team names (one per line, `#` comments allowed), the
@@ -143,7 +164,8 @@ println!("{}", outcome.to_json());
 ## Status
 
 Early skeleton. Round-robin generation, team-registry cross-checking,
-same-day double-booking detection, and JSON output are in.
+same-day double-booking detection, JSON output, and date-sorted output
+are in.
 
 ## License
 
