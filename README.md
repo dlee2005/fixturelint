@@ -163,9 +163,10 @@ println!("{}", outcome.to_json());
 
 ## Status
 
-Early skeleton. Round-robin generation, team-registry cross-checking,
-same-day double-booking detection, JSON output, and date-sorted output
-are in.
+Round-robin generation, team-registry cross-checking, same-day
+double-booking detection, JSON output, and date-sorted output are in.
+Packaging metadata (keywords, categories, readme) is set up for a
+crates.io release.
 
 ## License
 

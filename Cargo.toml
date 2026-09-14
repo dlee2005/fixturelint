@@ -4,3 +4,7 @@ version = "0.1.0"
 edition = "2021"
 license = "MIT"
 description = "Strict-by-default validator for plain-text sports fixture lists"
+readme = "README.md"
+keywords = ["fixtures", "scheduling", "sports", "csv", "validation"]
+categories = ["command-line-utilities", "parsing"]
+exclude = [".gitignore"]
