@@ -445,10 +445,34 @@ mod tests {
     #[test]
     fn lenient_mode_skips_bad_lines_and_warns() {
         let input = "2026-08-23,Arsenal,Chelsea\n2026-02-30,Foo,Bar\n2026-08-24,Liverpool,Everton\n";
-        let options = ParseOptions { lenient: true };
+        let options = ParseOptions {
+            lenient: true,
+            registry: None,
+        };
         let outcome = parse_str(input, &options).unwrap();
         assert_eq!(outcome.fixtures.len(), 2);
         assert_eq!(outcome.warnings.len(), 1);
+    }
+
+    #[test]
+    fn date_parse_rejects_unpadded_and_out_of_range_values() {
+        assert!(Date::parse("2026-8-23").is_err());
+        assert!(Date::parse("2026-13-01").is_err());
+        assert!(Date::parse("2026-00-10").is_err());
+        assert!(Date::parse("2026-04-31").is_err());
+        assert!(Date::parse("2026-02-29").is_err());
+        assert_eq!(
+            Date::parse("2028-02-29").unwrap(),
+            Date { year: 2028, month: 2, day: 29 }
+        );
+    }
+
+    #[test]
+    fn duplicate_check_ignores_team_name_case() {
+        let input = "2026-08-23,Arsenal,Chelsea\n2026-08-23,ARSENAL,chelsea\n";
+        let err = parse_str(input, &ParseOptions::default()).unwrap_err();
+        assert_eq!(err.line, 2);
+        assert!(err.message.contains("duplicate fixture"));
     }
 
     #[test]
